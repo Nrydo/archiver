@@ -54,9 +54,9 @@ struct Huffman : Archiver {
         Node* v;
         Node* u;
         while (a.size() + b.size() > 1) {
-            v = (c = &(b.empty() || (!a.empty() && a.front() < b.front()) ? a : b))->front();
+            v = (c = &(b.empty() || (!a.empty() && a.front()->freq < b.front()->freq) ? a : b))->front();
             c->pop();
-            u = (c = &(b.empty() || (!a.empty() && a.front() < b.front()) ? a : b))->front();
+            u = (c = &(b.empty() || (!a.empty() && a.front()->freq < b.front()->freq) ? a : b))->front();
             c->pop();
             b.push(new Node(v, u, v->freq + u->freq, 0));
         }
@@ -163,7 +163,7 @@ struct Huffman : Archiver {
 
 struct MultiArchiver : Archiver {
     vector<Archiver*> archivers = {
-        new Identity(),
+        // new Identity(),
         new Huffman()
     };
 
