@@ -163,7 +163,7 @@ struct Huffman : Archiver {
 
 struct MultiArchiver : Archiver {
     vector<Archiver*> archivers = {
-        // new Identity(),
+        new Identity(),
         new Huffman()
     };
 
@@ -198,59 +198,7 @@ struct MultiArchiver : Archiver {
     }
 };
 
-struct BlockArchiver : Archiver {
-    MultiArchiver archiver;
-    const int block_size = 8;
-
-    bytes encrypt(const bytes& data) override {
-        bytes buffer, result;
-        for (auto x : data) {
-            buffer.push_back(x);
-            if (buffer.size() == block_size) {
-                buffer = archiver.encrypt(buffer);
-                result.push_back(buffer.size());
-                if (result.size() == 1)
-                    cout << buffer.size() << '\n';
-                result.insert(result.end(), buffer.begin(), buffer.end());
-                buffer.clear();
-            }
-        }
-        if (!buffer.empty()) {
-            buffer = archiver.encrypt(buffer);
-            result.push_back(buffer.size());
-            cout << "buffer: " << buffer.size() << '\n';
-            result.insert(result.end(), buffer.begin(), buffer.end());
-            buffer.clear();
-        }
-        return archiver.encrypt(data);
-    }
-
-    bytes decrypt(const bytes& data) override {
-        bytes buffer, result;
-        int count = 0;
-        for (auto x : data) {
-            if (count == 0) {
-                count = x;
-                cout << "count: " << count << '\n';
-                continue;
-            }
-            count--;
-            buffer.push_back(x);
-            if (count == 0) {
-                buffer = archiver.decrypt(buffer);
-                result.insert(result.end(), buffer.begin(), buffer.end());
-                buffer.clear();
-            }
-        }
-        return result;
-    }
-};
-
 int32_t main() {
-    // freopen("tests/275", "r", stdin);
-    freopen("tests/70", "r", stdin);
-    // freopen("tests/small.txt", "r", stdin);
-    // freopen("tests/simple.txt", "r", stdin);
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
     bool mode;
@@ -265,47 +213,52 @@ int32_t main() {
             x = t;
         }
 
-        BlockArchiver archiver;
+        MultiArchiver archiver;
         auto result = archiver.decrypt(data);
 
-        int n = result[0] + result[1] * 256, m = result[2] + result[3] * 256;
+        int n, m, nsize;
+        if (result[0] & 128) {
+            n = result[0] & 127;
+            nsize = 1;
+        } else {
+            n = result[1] + result[0] * 256;
+            nsize = 2;
+        }
+        m = (result.size() - nsize) / n;
         cout << n << ' ' << m << '\n';
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < m; ++j) {
-                cout << int16_t(result[4 + i * m + j]) - 128 << ' ';
+                cout << int16_t(result[nsize + i * m + j]) - 128 << ' ';
             }
             cout << '\n';
         }
     } else {
         int n, m;
         cin >> n >> m;
-        bytes data(4 + n * m);
-        data[0] = n % 256;
-        data[1] = n / 256;
-        data[2] = m % 256;
-        data[3] = m / 256;
-        for (auto& x : data | ranges::views::drop(4)) {
+        bytes data(1 + (n >= 128) + n * m);
+        int nsize;
+        if (n < 128) {
+            data[0] = n | 128;
+            nsize = 1;
+        } else {
+            data[0] = n / 256;
+            data[1] = n % 256;
+            nsize = 2;
+        }
+        for (auto& x : data | ranges::views::drop(nsize)) {
             int t;
             cin >> t;
             x = t + 128;
         }
         
-        // BlockArchiver archiver;
         MultiArchiver archiver;
         auto result = archiver.encrypt(data);
         
         cout << result.size() << '\n';
-        // for (auto x : result) {
-        //     cout << uint16_t(x) << ' ';
-        // }
-        // cout << '\n';
-
-        auto ans = archiver.decrypt(result);
-        if (ans == data) {
-            cout << "OK\n";
-        } else {
-            cout << "FAIL\n";
+        for (auto x : result) {
+            cout << uint16_t(x) << ' ';
         }
+        cout << '\n';
     }
     return 0;
 }
