@@ -5,6 +5,39 @@
 using namespace std;
 
 using bytes = vector<byte>;
+using bits = vector<bool>;
+
+bits to_bits(const bytes& bytes, bool padding = true) {
+    bits result;
+    result.reserve(bytes.size() * 8);
+    for (byte x : bytes) {
+        for (int i = 0; i < 8; i++) {
+            result.push_back((x >> i) & 1);
+        }
+    }
+    if (padding) {
+        bool t = result.back();
+        while (result.back() == t) {
+            result.pop_back();
+        }
+    }
+    return result;
+}
+
+bytes to_bytes(const bits& bits) {
+    bytes result((bits.size() + 7) / 8);
+    for (int i = 0; i < bits.size(); i++) {
+        result[i / 8] |= bits[i] << (i % 8);
+    }
+    if (bits.size() % 8) {
+        for (int i = bits.size() % 8; i < 8; i++) {
+            result.back() |= (bits.back() ^ 1) << i;
+        }
+    } else {
+        result.push_back(255 * !bits.back());
+    }
+    return result;
+}
 
 struct Archiver {
     virtual bytes encrypt(const bytes& data) = 0;
@@ -19,6 +52,47 @@ struct Identity : Archiver {
 
     bytes decrypt(const bytes& data) override {
         return data;
+    }
+};
+
+struct RLE : Archiver {
+    int block = 4;
+
+    bytes encrypt(const bytes& data) override {
+        auto code = to_bits(data);
+        bits result;
+        int max_count = 1 << (block - 1);
+        for (int i = 0; i < code.size(); i++) {
+            int count = 1;
+            while (i + count < code.size() && code[i + count] == code[i] && count < max_count) {
+                count++;
+            }
+            count--;
+            for (int j = 0; j < block - 1; j++) {
+                result.push_back((count >> j) & 1);
+            }
+            result.push_back(code[i]);
+            i += count;
+        }
+        return to_bytes(result);
+    }
+
+    bytes decrypt(const bytes& data) override {
+        auto code = to_bits(data);
+        bits result;
+        int i = 0;
+        while (i < code.size()) {
+            int count = 0;
+            for (int j = 0; j < block - 1; j++) {
+                count |= (code[i + j] << j);
+            }
+            i += block - 1;
+            for (int j = 0; j <= count; j++) {
+                result.push_back(code[i]);
+            }
+            i++;
+        }
+        return to_bytes(result);
     }
 };
 
@@ -103,18 +177,7 @@ struct Huffman : Archiver {
         for (byte value : data) {
             code.insert(code.end(), biection[value].begin(), biection[value].end());
         }
-        bytes result((code.size() + 7) / 8);
-        for (int i = 0; i < code.size(); i++) {
-            result[i / 8] |= code[i] << (i % 8);
-        }
-        if (code.size() % 8) {
-            for (int i = code.size() % 8; i < 8; i++) {
-                result.back() |= (code.back() ^ 1) << i;
-            }
-        } else {
-            result.push_back(255 * !code.back());
-        }
-        return result;
+        return to_bytes(code);
     }
 
     Node* get_tree(const vector<bool>& code, int& cur) {
@@ -131,16 +194,7 @@ struct Huffman : Archiver {
     }
 
     bytes decrypt(const bytes& data) override {
-        vector<bool> code;
-        for (byte x : data) {
-            for (int i = 0; i < 8; i++) {
-                code.push_back((x >> i) & 1);
-            }
-        }
-        bool t = code.back();
-        while (code.back() == t) {
-            code.pop_back();
-        }
+        auto code = to_bits(data);
         int cur = 0;
         Node* root = get_tree(code, cur);
         Node* v = root;
@@ -164,7 +218,8 @@ struct Huffman : Archiver {
 struct MultiArchiver : Archiver {
     vector<Archiver*> archivers = {
         new Identity(),
-        new Huffman()
+        new RLE(),
+        new Huffman(),
     };
 
     ~MultiArchiver() {
