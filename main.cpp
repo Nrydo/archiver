@@ -358,13 +358,11 @@ struct Huffman : Archiver {
         return root;
     }
 
-    bytes decrypt(const bytes& data) override {
-        auto code = to_bits(data);
-        int cur = 0;
+    bytes decrypt(const bits& code, int max_size, int& cur) {
         Node* root = get_tree(code, cur);
         Node* v = root;
         bytes result;
-        for (; cur < code.size(); cur++) {
+        for (; cur < code.size() && result.size() != max_size; cur++) {
             if (code[cur]) {
                 v = v->r;
             } else {
@@ -376,6 +374,80 @@ struct Huffman : Archiver {
             }
         }
         delete root;
+        return result;
+    }
+
+    bytes decrypt(const bytes& data) override {
+        int cur = 0;
+        auto code = to_bits(data);
+        return decrypt(code, -1, cur);
+    }
+};
+
+struct RowHuffman : Archiver {
+    int step;
+
+    RowHuffman(int step = 1) : step(step) {}
+
+    bytes encrypt(const bytes& data) override {
+        int n, m, nsize;
+        if (data[0] & 128) {
+            n = data[0] & 127;
+            nsize = 1;
+        } else {
+            n = data[1] + data[0] * 256;
+            nsize = 2;
+        }
+        m = (data.size() - nsize) / n;
+
+        bytes mbytes;
+        int msize;
+        if (m < 128) {
+            mbytes.push_back(m | 128);
+            msize = 1;
+        } else {
+            mbytes.push_back(m / 256);
+            mbytes.push_back(m % 256);
+            msize = 2;
+        }
+
+        bits code = to_bits(mbytes, false);
+        Huffman huffman;
+        for (int i = nsize; i < data.size(); i += m * step) {
+            bytes row(data.begin() + i, data.begin() + min(i + m * step, int(data.size())));
+            bits ans = to_bits(huffman.encrypt(row));
+            code.insert(code.end(), ans.begin(), ans.end());
+        }
+
+        return to_bytes(code);
+    }
+
+    bytes decrypt(const bytes& data) override {
+        bits code = to_bits(data);
+
+        int m, msize;
+        if (data[0] & 128) {
+            m = data[0] & 127;
+            msize = 1;
+        } else {
+            m = data[1] + data[0] * 256;
+            msize = 2;
+        }
+
+        Huffman huffman;
+        bytes result(2);
+        for (int cur = msize * 8; cur < code.size(); ) {
+            bytes ans = huffman.decrypt(code, m * step, cur);
+            result.insert(result.end(), ans.begin(), ans.end());
+        }
+        int n = result.size() / m;
+        if (n < 128) {
+            result.erase(result.begin());
+            result[0] = n | 128;
+        } else {
+            result[0] = n / 256;
+            result[1] = n % 256;
+        }
         return result;
     }
 };
@@ -396,6 +468,7 @@ struct MultiArchiver : Archiver {
         // new RLE(),
         new Huffman(),
         // new BZIP2(),
+        new RowHuffman(),
     };
 
     ~MultiArchiver() {
@@ -410,6 +483,7 @@ struct MultiArchiver : Archiver {
             Archiver* archiver = archivers[i];
             auto result = archiver->encrypt(data);
             result.push_back(i);
+            // cout << i << ' ' << result.size() << '\n';
             if (best_result.empty() || best_result.size() > result.size()) {
                 best_result = std::move(result);
             }
@@ -431,10 +505,10 @@ struct MultiArchiver : Archiver {
 
 int32_t main() {
     #ifdef LOCAL
-        // freopen("input.txt", "r", stdin);
+        freopen("input.txt", "r", stdin);
         // freopen("tests/simple.txt", "r", stdin);
         // freopen("tests/70", "r", stdin);
-        freopen("tests/275", "r", stdin);
+        // freopen("tests/275", "r", stdin);
         freopen("output.txt", "w", stdout);
     #endif
     ios::sync_with_stdio(false);
@@ -493,7 +567,7 @@ int32_t main() {
         auto result = archiver.encrypt(data);
         
         cout << result.size() << '\n';
-        for (auto x : data) {
+        for (auto x : result) {
             cout << uint16_t(x) << ' ';
         }
         cout << '\n';
