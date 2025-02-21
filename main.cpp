@@ -241,6 +241,26 @@ struct MTF : Archiver {
     }
 };
 
+struct XOR : Archiver {
+    bytes encrypt(const bytes& data) override {
+        bytes result(data.size());
+        result[0] = data[0];
+        for (int i = 1; i < data.size(); i++) {
+            result[i] = data[i] ^ data[i - 1];
+        }
+        return result;
+    }
+
+    bytes decrypt(const bytes& data) override {
+        bytes result(data.size());
+        result[0] = data[0];
+        for (int i = 1; i < data.size(); i++) {
+            result[i] = data[i] ^ result[i - 1];
+        }
+        return result;
+    }
+};
+
 struct Huffman : Archiver {
     struct Node {
         Node* l;
@@ -374,8 +394,8 @@ struct MultiArchiver : Archiver {
     vector<Archiver*> archivers = {
         new Identity(),
         // new RLE(),
-        // new Huffman(),
-        new BZIP2(),
+        new Huffman(),
+        // new BZIP2(),
     };
 
     ~MultiArchiver() {
@@ -410,12 +430,13 @@ struct MultiArchiver : Archiver {
 };
 
 int32_t main() {
-#ifdef LOCAL
-    // freopen("input.txt", "r", stdin);
-    // freopen("tests/simple.txt", "r", stdin);
-    freopen("tests/70", "r", stdin);
-    freopen("output.txt", "w", stdout);
-#endif
+    #ifdef LOCAL
+        // freopen("input.txt", "r", stdin);
+        // freopen("tests/simple.txt", "r", stdin);
+        // freopen("tests/70", "r", stdin);
+        freopen("tests/275", "r", stdin);
+        freopen("output.txt", "w", stdout);
+    #endif
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
     bool mode;
@@ -472,7 +493,7 @@ int32_t main() {
         auto result = archiver.encrypt(data);
         
         cout << result.size() << '\n';
-        for (auto x : result) {
+        for (auto x : data) {
             cout << uint16_t(x) << ' ';
         }
         cout << '\n';

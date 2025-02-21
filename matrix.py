@@ -3,8 +3,15 @@ import numpy as np
 
 cnt = {}
 
-with open("output.txt") as file:
-    data = list(map(int, file.read().split()))
+with open("tests/275") as file:
+    lines = [list(map(int, line.split())) for line in file]
+
+n, m = lines[1]
+print(n, m)
+data = np.array(lines[2:])
+# data = data[100]
+
+# data = [len(set(line)) for line in data]
 
 # counter = 0
 # c = data[0]
@@ -40,7 +47,7 @@ def xpa(data):
     return res
 
 def calc_haffman(data):
-    count = [0] * 255
+    count = [0] * 256
     for x in data:
         # count[x % 16] += 1
         # count[x // 16] += 1
@@ -67,13 +74,16 @@ def calc_haffman(data):
 
 # print(calc_haffman([1, 1, 3, 6, 7, 10]))
 
-# exit()
+print(sum(calc_haffman(line) for line in data))
+print(calc_haffman(data.flatten()))
 
-print(calc_haffman(data))
+exit(0)
 
-data = mp(data)
+# data = mp(data)
 
-print(calc_haffman(data))
+# print(calc_haffman(data))
+
+print(np.mean(data))
 
 for x in data:
     cnt[x] = cnt.get(x, 0) + 1
