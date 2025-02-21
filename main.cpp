@@ -1,8 +1,16 @@
 #include <bits/stdc++.h>
 
+#include <ext/pb_ds/detail/standard_policies.hpp>
+#include <ext/pb_ds/assoc_container.hpp>
+#include <ext/pb_ds/tree_policy.hpp>
+
 #define byte uint8_t
+#define bit bool
 
 using namespace std;
+
+using namespace __gnu_pbds;
+template <typename T> using ordered_set = tree <T, null_type, less < T >, rb_tree_tag, tree_order_statistics_node_update>;
 
 using bytes = vector<byte>;
 using bits = vector<bool>;
@@ -16,7 +24,7 @@ bits to_bits(const bytes& bytes, bool padding = true) {
         }
     }
     if (padding) {
-        bool t = result.back();
+        bit t = result.back();
         while (result.back() == t) {
             result.pop_back();
         }
@@ -93,6 +101,143 @@ struct RLE : Archiver {
             i++;
         }
         return to_bytes(result);
+    }
+};
+
+struct BWT : Archiver {
+    vector<int> build_suffix_array(const bytes& data) {
+        int n = data.size();
+        vector<int> sa(n), ranks(n), new_ranks(n);
+        vector<int> cnt(max(256, n), 0);
+    
+        for (int i = 0; i < n; ++i)
+            cnt[data[i]]++;
+        for (int i = 1; i < 256; ++i)
+            cnt[i] += cnt[i - 1];
+        for (int i = n - 1; i >= 0; --i)
+            sa[--cnt[data[i]]] = i;
+    
+        ranks[sa[0]] = 0;
+        int classes = 1;
+        for (int i = 1; i < n; ++i) {
+            if (data[sa[i]] != data[sa[i - 1]])
+                classes++;
+            ranks[sa[i]] = classes - 1;
+        }
+
+        for (int k = 0; (1 << k) < n; ++k) {
+            for (int i = 0; i < n; ++i)
+                sa[i] = (sa[i] - (1 << k) + n) % n;
+    
+            fill(cnt.begin(), cnt.begin() + classes, 0);
+            for (int i = 0; i < n; ++i)
+                cnt[ranks[sa[i]]]++;
+            for (int i = 1; i < classes; ++i)
+                cnt[i] += cnt[i - 1];
+            for (int i = n - 1; i >= 0; --i)
+                new_ranks[--cnt[ranks[sa[i]]]] = sa[i];
+            sa.swap(new_ranks);
+    
+            new_ranks[sa[0]] = 0;
+            classes = 1;
+            for (int i = 1; i < n; ++i) {
+                int cur1 = ranks[sa[i]], cur2 = ranks[(sa[i] + (1 << k)) % n];
+                int prev1 = ranks[sa[i - 1]], prev2 = ranks[(sa[i - 1] + (1 << k)) % n];
+                if (cur1 != prev1 || cur2 != prev2)
+                    classes++;
+                new_ranks[sa[i]] = classes - 1;
+            }
+            ranks.swap(new_ranks);
+        }
+    
+        return sa;
+    }
+
+    bytes encrypt(const bytes& data) override {
+        int n = data.size();
+        auto suffix_array = build_suffix_array(data);
+        bytes result(n + 4);
+        for (int i = 0; i < n; i++) {
+            result[i] = data[(suffix_array[i] + n - 1) % n];
+        }
+        int index = find(suffix_array.begin(), suffix_array.end(), 0) - suffix_array.begin();
+        result[n] = index & 255;
+        result[n + 1] = (index >> 8) & 255;
+        result[n + 2] = (index >> 16) & 255;
+        result[n + 3] = (index >> 24) & 255;
+        return result;
+    }
+
+    bytes decrypt(const bytes& data) override {
+        auto copy = data;
+        int k = 0;
+        for (int i = 0; i < 4; i++) {
+            k = (k << 8) | copy.back();
+            copy.pop_back();
+        }
+        int n = copy.size();
+        vector<int> cnt(256), start(256);
+        for (byte x : copy) cnt[x]++;
+        
+        for (int i = 1; i < 256; i++) start[i] = start[i - 1] + cnt[i - 1];
+        
+        vector<int> next(n);
+        for (int i = 0; i < n; i++) {
+            next[start[copy[i]]++] = i;
+        }
+        
+        bytes result(n);
+        int idx = next[k];
+        for (int i = 0; i < n; i++) {
+            result[i] = copy[idx];
+            idx = next[idx];
+        }
+        return result;
+    }
+};
+
+struct MTF : Archiver {
+    bytes encrypt(const bytes& data) override {
+        ordered_set < pair < int, int > > st;
+
+        vector < int > marks(256, 0);
+        for (int i = 0; i < 256; i++) {
+            marks[i] = i;
+            st.insert({marks[i], i});
+        }
+
+        bytes enc;
+        int first = 0;
+        for (auto to: data) {
+            int cnt = st.order_of_key({marks[to], to});
+            enc.push_back(cnt);
+            st.erase({marks[to], to});
+            marks[to] = --first;
+            st.insert({marks[to], to});
+        }
+
+        return enc;
+    }
+
+    bytes decrypt(const bytes& data) override {
+        ordered_set < pair < int, int > > st;
+        vector < int > marks(256, 0);
+        for (int i = 0; i < 256; i++) {
+            marks[i] = i;
+            st.insert({marks[i], i});
+        }
+
+        bytes dec;
+        int first = 0;
+        for (auto to: data) {
+            pair<int, int> cnt = *st.find_by_order(to);
+            dec.push_back(cnt.second);
+            st.erase(cnt);
+            marks[cnt.second] = --first;
+            st.insert({marks[cnt.second], cnt.second});
+        }
+
+        return dec;
     }
 };
 
@@ -215,11 +360,22 @@ struct Huffman : Archiver {
     }
 };
 
+struct BZIP2 : Archiver {
+    bytes encrypt(const bytes &data) override {
+        return Huffman().encrypt(MTF().encrypt(BWT().encrypt(data)));
+    }
+
+    bytes decrypt(const bytes &data) override {
+        return BWT().decrypt(MTF().decrypt(Huffman().decrypt(data)));
+    }
+};
+
 struct MultiArchiver : Archiver {
     vector<Archiver*> archivers = {
         new Identity(),
-        new RLE(),
-        new Huffman(),
+        // new RLE(),
+        // new Huffman(),
+        new BZIP2(),
     };
 
     ~MultiArchiver() {
@@ -254,6 +410,12 @@ struct MultiArchiver : Archiver {
 };
 
 int32_t main() {
+#ifdef LOCAL
+    // freopen("input.txt", "r", stdin);
+    // freopen("tests/simple.txt", "r", stdin);
+    freopen("tests/70", "r", stdin);
+    freopen("output.txt", "w", stdout);
+#endif
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
     bool mode;
