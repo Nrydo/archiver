@@ -4,8 +4,13 @@
 #include <ext/pb_ds/assoc_container.hpp>
 #include <ext/pb_ds/tree_policy.hpp>
 
+using long_double = long double;
+
 #define byte uint8_t
 #define bit bool
+#define real long_double
+
+using data_type = real;
 
 using namespace std;
 
@@ -536,18 +541,20 @@ int32_t main() {
             n = result[1] + result[0] * 256;
             nsize = 2;
         }
-        m = (result.size() - nsize) / n;
+        m = (result.size() - nsize) / n / sizeof(data_type);
         cout << n << ' ' << m << '\n';
+        data_type* ptr = reinterpret_cast<data_type*>(result.data() + nsize);
+        cout << fixed << setprecision(10);
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < m; ++j) {
-                cout << int16_t(result[nsize + i * m + j]) - 128 << ' ';
+                cout << ptr[i * m + j] << ' ';
             }
             cout << '\n';
         }
     } else {
         int n, m;
         cin >> n >> m;
-        bytes data(1 + (n >= 128) + n * m);
+        bytes data(1 + (n >= 128) + n * m * sizeof(data_type));
         int nsize;
         if (n < 128) {
             data[0] = n | 128;
@@ -557,10 +564,11 @@ int32_t main() {
             data[1] = n % 256;
             nsize = 2;
         }
-        for (auto& x : data | ranges::views::drop(nsize)) {
-            int t;
+        data_type* ptr = reinterpret_cast<data_type*>(data.data() + nsize);
+        for (int i = 0; i < n * m; i++) {
+            data_type t;
             cin >> t;
-            x = t + 128;
+            ptr[i] = t;
         }
         
         MultiArchiver archiver;
